@@ -65,7 +65,9 @@ type zivpnConfig struct {
 	Insecure       bool   `json:"insecure"`
 	RecvWindowConn uint64 `json:"recvwindowconn"`
 	RecvWindow     uint64 `json:"recvwindow"`
+	HopInterval string `json:"hopinterval"`
 }
+
 
 type clientConfig struct {
 	Server        string                `mapstructure:"server"`
@@ -418,15 +420,34 @@ func runClient(cmd *cobra.Command, args []string) {
 		if err := json.Unmarshal([]byte(configContent), &zConf); err != nil {
 			logger.Fatal("failed to parse ZIVPN config", zap.Error(err))
 		}
+		var hopInterval time.Duration
+		if zConf.HopInterval != "" {
+			var err error
+			hopInterval, err = time.ParseDuration(zConf.HopInterval)
+			if err != nil {
+				logger.Fatal("invalid hopinterval",
+							 zap.String("value", zConf.HopInterval),
+							 zap.Error(err),
+				)
+			}
+		}
+
+		if hopInterval == 0 {
+			hopInterval = 10 * time.Second // default aman
+		}
+		config.Transport = clientConfigTransport{
+			Type: "udp",
+			UDP: clientConfigTransportUDP{
+				HopInterval: hopInterval,
+			},
+		}
 
 		config.Server = zConf.Server
 		config.Auth = zConf.Auth
 		config.TLS.Insecure = zConf.Insecure
 		config.QUIC.InitConnectionReceiveWindow = zConf.RecvWindowConn
 		config.QUIC.MaxConnectionReceiveWindow = zConf.RecvWindow
-		
-		// ZIVPN uses SOCKS5 by default
-		config.Socks5 = &socks5Config{
+		config.SOCKS5 = &socks5Config{
 			Listen: zConf.Socks5.Listen,
 		}
 
